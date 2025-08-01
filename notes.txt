@@ -1,0 +1,2 @@
+- Dataset contains no missing values
+- Mean age of the clients is  
