@@ -20,6 +20,16 @@ def load_data(path='data/raw/default_of_credit_card_clients.xls'):
     return pd.read_excel(path, header=1)
 
 def preprocess_data(data):
+    """ Preprocess the credit card default dataset. This includes:
+    - Converting data types for numerical and categorical features.
+    - Mapping categorical values to more meaningful labels.
+    - Handling missing values by dropping rows with any missing data.
+    - Creating new features based on existing ones, particularly for payment history.
+    
+    Args:
+        data (pd.DataFrame): Raw data loaded from the source.
+    Returns:
+        list: A list containing the original data, transformed data, and one-hot encoded data."""
 
     #Changing data types and handling missing values
     data[numerical_features] = data[numerical_features].apply(pd.to_numeric, errors='coerce')
@@ -46,10 +56,27 @@ def preprocess_data(data):
     data = data.dropna()
     print(f"Data shape after dropping missing values: {data.shape}")
 
+    # List of PAY_X columns to transform and remove
+    pay_cols = ['PAY_0', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6']
 
+    # Copy data for transformation
+    new_data = data.copy()
 
-    return data
+    # Create new features
+    for col in pay_cols:
+        new_data[f'{col}_no_consumption'] = (new_data[col] == -2).astype(int)
+        new_data[f'{col}_paid_duly'] = (new_data[col] == -1).astype(int)
+        new_data[f'{col}_delay'] = new_data[col].apply(lambda x: 0 if x < 0 else x)
+    new_data[target] = new_data[target].astype(int)
+
+    # Exclude the target variable from dummyfication
+    categorical_to_dummy = [col for col in new_data.select_dtypes(include='category').columns if col != target]
+
+    # Perform one-hot encoding, keeping the target as category
+    data_encoded = pd.get_dummies(new_data, columns=categorical_to_dummy, drop_first=False)
+
+    return [data, new_data, data_encoded]
 
 if __name__ == "__main__":
     data = load_data()
-    data = preprocess_data(data)
+    processed_data = preprocess_data(data)[2]
