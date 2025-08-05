@@ -1,6 +1,5 @@
 import requests
 import os
-import pandas as pd
 
 url = "https://archive.ics.uci.edu/ml/machine-learning-databases/00350/default%20of%20credit%20card%20clients.xls"
 # Ensure the dataset directory is always relative to the project root
@@ -12,7 +11,7 @@ dataset_path = os.path.join(dataset_dir, "default_of_credit_card_clients.xls")
 os.makedirs(dataset_dir, exist_ok=True)
 
 try:
-    response = requests.get(url)
+    response = requests.get(url, verify=False)
     response.raise_for_status()  # Raise an error for bad responses (e.g., 404)
     with open(dataset_path, "wb") as file:
         file.write(response.content)
