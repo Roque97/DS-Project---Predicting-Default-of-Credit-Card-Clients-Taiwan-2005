@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from sklearn.model_selection import train_test_split
 
 numerical_features = [
         'LIMIT_BAL', 'AGE', 'BILL_AMT1', 'BILL_AMT2', 'BILL_AMT3',
@@ -19,17 +20,34 @@ target = 'default payment next month'
 def load_data(path='data/raw/default_of_credit_card_clients.xls'):
     return pd.read_excel(path, header=1)
 
-def preprocess_data(data):
+def preprocess_data(
+    data, 
+    test_size=0.2, 
+    random_state=12345, 
+    split_data=True, 
+    save=False, 
+    save_prefix="original"
+):
     """ Preprocess the credit card default dataset. This includes:
     - Converting data types for numerical and categorical features.
     - Mapping categorical values to more meaningful labels.
     - Handling missing values by dropping rows with any missing data.
     - Creating new features based on existing ones, particularly for payment history.
+    - Optionally splitting data into train/test sets.
     
     Args:
         data (pd.DataFrame): Raw data loaded from the source.
+        test_size (float): Proportion of data to use for testing (default: 0.2).
+        random_state (int): Random state for reproducibility (default: 12345).
+        split_data (bool): Whether to split data into train/test sets (default: True).
+        save (bool): Whether to save the processed data to CSV files (default: False).
+        save_prefix (str): Prefix for saved file names (default: "processed").
+        
     Returns:
-        list: A list containing the original data, transformed data, and one-hot encoded data."""
+        dict: Dictionary containing processed data and splits if requested.
+              Keys: 'original', 'transformed', 'encoded', and optionally 
+              'X_train', 'X_test', 'y_train', 'y_test'
+    """
 
     #Changing data types and handling missing values
     data[numerical_features] = data[numerical_features].apply(pd.to_numeric, errors='coerce')
@@ -69,14 +87,64 @@ def preprocess_data(data):
         new_data[f'{col}_delay'] = new_data[col].apply(lambda x: 0 if x < 0 else x)
     new_data[target] = new_data[target].astype(int)
 
+    # Remove original PAY_X columns after feature engineering
+    new_data = new_data.drop(columns=pay_cols)
+
     # Exclude the target variable from dummyfication
     categorical_to_dummy = [col for col in new_data.select_dtypes(include='category').columns if col != target]
 
     # Perform one-hot encoding, keeping the target as category
     data_encoded = pd.get_dummies(new_data, columns=categorical_to_dummy, drop_first=False)
 
-    return [data, new_data, data_encoded]
+    # Prepare return dictionary
+    result = {
+        'original': data,
+        'transformed': new_data,
+        'encoded': data_encoded
+    }
+
+    # Split data if requested
+    if split_data:
+        # Prepare features and target
+        feature_cols = [col for col in data_encoded.columns if col not in [target, 'ID']]
+        X = data_encoded[feature_cols]
+        y = data_encoded[target]
+        
+        # Split the data
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state, stratify=y
+        )
+        
+        # Add splits to result
+        result.update({
+            'X_train': X_train,
+            'X_test': X_test,
+            'y_train': y_train,
+            'y_test': y_test
+        })
+        
+        print(f"Training set shape: {X_train.shape}")
+        print(f"Test set shape: {X_test.shape}")
+        print(f"Class distribution in training set:\n{y_train.value_counts(normalize=True)}")
+
+    # Save results if requested
+    if save:
+        import os
+        os.makedirs("data/processed", exist_ok=True)
+        data.to_csv(f"data/processed/{save_prefix}_original.csv", index=False)
+        new_data.to_csv(f"data/processed/{save_prefix}_transformed.csv", index=False)
+        data_encoded.to_csv(f"data/processed/{save_prefix}_encoded.csv", index=False)
+        if split_data:
+            X_train.to_csv(f"data/processed/{save_prefix}_X_train.csv", index=False)
+            X_test.to_csv(f"data/processed/{save_prefix}_X_test.csv", index=False)
+            y_train.to_csv(f"data/processed/{save_prefix}_y_train.csv", index=False)
+            y_test.to_csv(f"data/processed/{save_prefix}_y_test.csv", index=False)
+        print("Processed files saved to data/processed/")
+
+    return result
 
 if __name__ == "__main__":
     data = load_data()
-    processed_data = preprocess_data(data)[2]
+    
+    # Example usage with splitting
+    processed_with_split = preprocess_data(data, test_size=0.2, random_state=12345, split_data=True, save=True)
