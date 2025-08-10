@@ -1,2 +1,8 @@
 - Dataset contains no missing values
-- Mean age of the clients is  
+- Mean age of the clients is 
+
+
+
+
+. % defautl on train 77/22
+ on original 
