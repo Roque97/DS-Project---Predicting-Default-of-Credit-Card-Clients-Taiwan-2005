@@ -2,15 +2,16 @@ import pandas as pd
 import numpy as np
 from typing import TypedDict, List, Optional, Tuple
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, classification_report, roc_curve, roc_auc_score, precision_recall_curve, average_precision_score
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import seaborn as sns
 import os
 
+from sklearn.metrics import confusion_matrix, classification_report, roc_curve, roc_auc_score, precision_recall_curve, average_precision_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.naive_bayes import GaussianNB
 from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 
 
 class DataSplitDict(TypedDict):
@@ -19,6 +20,24 @@ class DataSplitDict(TypedDict):
     X_test: pd.DataFrame
     y_test: pd.Series
 
+
+def standardize_features(data : pd.DataFrame) -> pd.DataFrame:
+    """Standardize numerical features in the DataFrame.
+
+    Args:
+        data (pd.DataFrame): The DataFrame containing the dataset.
+
+    Returns:
+        pd.DataFrame: The DataFrame with standardized numerical features.
+    """    
+    # Identify numerical features for standardization
+    numerical_features = data.select_dtypes(include=[np.float64, np.int64]).columns.tolist()
+
+    for col in data.columns:
+        if np.issubdtype(data[col].dtype, np.number) and col in numerical_features:
+            scaler = StandardScaler()
+            data[[col]] = scaler.fit_transform(data[[col]])
+    return data
 
 
 def evaluate_model(model, data: DataSplitDict, plotsQ : bool = False, save_path: str = None):
@@ -72,7 +91,8 @@ def evaluate_model(model, data: DataSplitDict, plotsQ : bool = False, save_path:
     if plotsQ:
         # If save_path is provided, create directory if needed
         if save_path is not None:
-            os.makedirs(save_path, exist_ok=True)
+            if not os.path.exists(save_path):
+                os.makedirs(save_path, exist_ok=True)
 
         # Plot confusion matrix with numbers and percentages
         plt.figure(figsize=(8, 6))
@@ -159,28 +179,16 @@ def NaiveBayesClassifier(
     - results: Evaluation results dictionary
     """
 
-    X_train = data['X_train']
-    X_test = data['X_test']
     
-    # Identify numerical features for standardization
-    numerical_features = X_train.select_dtypes(include=[np.float64, np.int64]).columns.tolist()
-  
-    # Standardize only columns that are numerical (float or int)
-    for col in X_train.columns:
-        if np.issubdtype(X_train[col].dtype, np.number) and col in numerical_features:
-            scaler = StandardScaler()
-            X_train[[col]] = scaler.fit_transform(X_train[[col]])
-            X_test[[col]] = scaler.transform(X_test[[col]])
+
+    # Standardize features
+    X_train = standardize_features(data['X_train'])
+    X_test = standardize_features(data['X_test'])
 
     nb = GaussianNB()
     nb.fit(X_train, data['y_train'])
-    scaled_data = DataSplitDict(
-        X_train=X_train,
-        y_train=data['y_train'],
-        X_test=X_test,
-        y_test=data['y_test']
-    )
-    results = evaluate_model(nb, scaled_data, plotsQ=plotsQ, save_path=save_path)
+
+    results = evaluate_model(nb, data, plotsQ=plotsQ, save_path=save_path)
     return nb, results
 
 def KNNClassifier(
@@ -201,6 +209,9 @@ def KNNClassifier(
     - best_knn: Best KNN model found
     - results: Evaluation results dictionary
     """
+
+
+
     param_grid = {'n_neighbors': test_cases_n if test_cases_n is not None else list(range(1, 21))}
     knn = KNeighborsClassifier()
     grid = GridSearchCV(knn, param_grid, cv=5, scoring='accuracy')
@@ -224,19 +235,46 @@ def KNNClassifier(
     results = evaluate_model(best_knn, data, plotsQ=plotsQ, save_path=save_path)
     return best_knn, results
 
+def DecisionTreeClassifierModel(
+    data: DataSplitDict,
+    save_path: str = None,
+    plotsQ: bool = False
+) -> Tuple[DecisionTreeClassifier, dict]:
+    """
+    Train and evaluate a Decision Tree classifier for credit card default prediction.
+
+    Parameters:
+    - data: Dict with keys 'X_train', 'y_train', 'X_test', 'y_test'
+    - save_path (optional): Directory to save plots
+
+    Returns:
+    - dt: Trained Decision Tree model
+    - results: Evaluation results dictionary
+    """
+    dt = DecisionTreeClassifier(random_state=12345)
+    dt.fit(data['X_train'], data['y_train'])
+    results = evaluate_model(dt, data, plotsQ=plotsQ, save_path=save_path)
+    return dt, results
+
 if __name__ == "__main__":
    
     print('Current working directory:', os.getcwd())
     original_data = DataSplitDict(
         X_train=pd.read_csv('data/processed/original_X_train.csv'),
-        y_train=pd.read_csv('data/processed/original_y_train.csv'),
+        y_train=pd.read_csv('data/processed/original_y_train.csv').values.ravel(),
         X_test=pd.read_csv('data/processed/original_X_test.csv'),
-        y_test=pd.read_csv('data/processed/original_y_test.csv'))
+        y_test=pd.read_csv('data/processed/original_y_test.csv').values.ravel()
+    )
+
+    # Standardize features
+    original_data['X_train'] = standardize_features(original_data['X_train'])
+    original_data['X_test'] = standardize_features(original_data['X_test'])
     
-    results_nb = NaiveBayesClassifier(original_data, save_path='plots/models/NaiveBayes/original/', plotsQ=True)
+    # Naive Bayes Classifier
     
-    #save_path = '../plots/models/KNN/original/'
-    #test_cases_n = list(range(1, 50, 5))  # Default test cases for KNN
-    #KNNClassifier(original_data, test_cases_n, save_path=save_path)
+    #results_nb = NaiveBayesClassifier(original_data, save_path='plots/models/NaiveBayes/original/', plotsQ=True)
+    
+    test_cases_n = list(range(1, 50, 2))  # Default test cases for KNN
+    KNNClassifier(original_data, test_cases_n, save_path='plots/models/KNN/original/')
 
 

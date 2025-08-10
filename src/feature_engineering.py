@@ -7,36 +7,45 @@ from feature_engine.selection import MRMR
 import os
 
 
-def pca_features(data_encoded, n_components=None, scree_plot=False, save=False, dataset_suffix : str = ""):
+def pca_features(
+    X_train: pd.DataFrame,
+    X_test: pd.DataFrame,
+    n_components: int = None,
+    scree_plot: bool = False,
+    save: bool = False,
+    dataset_suffix: str = ""
+):
     """
-    Perform PCA on the provided encoded data and optionally plot the explained variance.
+    Apply PCA to X_train and X_test, save transformed datasets with n_components.
+    If n_components is not specified, use the minimum number of components that explain at least 80% of the variance.
 
     Args:
-        data_encoded (pd.DataFrame): The preprocessed and one-hot encoded data.
-        n_components (int, optional): Number of principal components to keep. If None, all components are kept.
+        X_train (pd.DataFrame): Training features.
+        X_test (pd.DataFrame): Test features.
+        n_components (int, optional): Number of principal components to keep.
         scree_plot (bool, optional): Whether to plot the explained variance ratio.
         save (bool, optional): Whether to save the PCA-transformed data.
+        dataset_suffix (str, optional): Suffix for saved dataset filenames.
 
     Returns:
-        tuple: Transformed data (with n_components) and explained variance ratio (for n_components).
+        tuple: (X_train_pca, X_test_pca, explained_var)
     """
-    assert isinstance(n_components, (int, type(None))), "n_components must be an integer or None"
-    assert isinstance(data_encoded, pd.DataFrame), "data_encoded must be a pandas DataFrame"
-
-    # Prepare data for PCA: use only numerical columns from data_encoded
-    pca_features = [col for col in data_encoded.columns if data_encoded[col].dtype in [np.int64, np.float64, bool] and col not in ['default payment next month']]
-    X = data_encoded[pca_features].astype(float)
+    # Use only numerical columns
+    pca_features = [col for col in X_train.columns if X_train[col].dtype in [np.int64, np.float64, bool]]
+    X_train_num = X_train[pca_features].astype(float)
+    X_test_num = X_test[pca_features].astype(float)
 
     # Standardize features
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X_train_scaled = scaler.fit_transform(X_train_num)
+    X_test_scaled = scaler.transform(X_test_num)
 
-    # Fit PCA with all components for scree plot
-    pca_full = PCA(n_components=min(X_scaled.shape), random_state=12345)
-    X_pca_full = pca_full.fit_transform(X_scaled)
+    # Fit PCA with all components for scree plot and variance calculation
+    pca_full = PCA(n_components=min(X_train_scaled.shape), random_state=12345)
+    pca_full.fit(X_train_scaled)
     explained_var_full = pca_full.explained_variance_ratio_
 
-    # Scree plot always shows all PCs
+    # Scree plot
     if scree_plot:
         cumulative_var = explained_var_full.cumsum()
         plt.figure(figsize=(8, 4))
@@ -47,19 +56,26 @@ def pca_features(data_encoded, n_components=None, scree_plot=False, save=False, 
         plt.grid(True)
         plt.show()
 
-    # Now fit PCA with n_components for output and saving
+    # If n_components is not specified, choose minimum number to explain >=80% variance
     if n_components is None:
-        n_components = min(X_scaled.shape)
+        cumulative_var = explained_var_full.cumsum()
+        n_components = np.argmax(cumulative_var >= 0.80) + 1
+        print(f"Number of components selected: {n_components}")
+
+    # Fit PCA with chosen n_components
     pca = PCA(n_components=n_components, random_state=12345)
-    X_pca = pca.fit_transform(X_scaled)
+    X_train_pca = pca.fit_transform(X_train_scaled)
+    X_test_pca = pca.transform(X_test_scaled)
     explained_var = pca.explained_variance_ratio_
 
     if save:
         os.makedirs("./data/processed/PCA", exist_ok=True)
-        pca_df = pd.DataFrame(X_pca, columns=[f'PC{i+1}' for i in range(X_pca.shape[1])])
-        pca_df.to_csv(f"./data/processed/PCA/pca_{dataset_suffix}.csv", index=False)
+        pd.DataFrame(X_train_pca, columns=[f'PC{i+1}' for i in range(X_train_pca.shape[1])]).to_csv(
+            f"./data/processed/PCA/pca_X_train{dataset_suffix}.csv", index=False)
+        pd.DataFrame(X_test_pca, columns=[f'PC{i+1}' for i in range(X_test_pca.shape[1])]).to_csv(
+            f"./data/processed/PCA/pca_X_test{dataset_suffix}.csv", index=False)
 
-    return X_pca, explained_var
+    return X_train_pca, X_test_pca,
 
 
 def mrmr_features(data : pd.DataFrame, target: str, max_features: int = None, plotQ: bool = False) -> pd.DataFrame:
@@ -140,8 +156,6 @@ def mrmr_features(data : pd.DataFrame, target: str, max_features: int = None, pl
     selected_data = mrmr_features(data_encoded, target='default payment next month', max_features=20)
 
 if __name__ == "__main__":
-    data = pd.read_csv("./data/processed/original_encoded.csv")
-    print("Data loaded successfully. Shape:", data.shape, "Columns:", data.columns.tolist())
-    print("Data types:", data.dtypes)
-    # Apply mRMR feature selection
-    selected_data = mrmr_features(data, target='default payment next month', max_features=20)
+    X_train = pd.read_csv("./data/processed/original_X_train.csv")
+    X_test = pd.read_csv("./data/processed/original_X_test.csv")
+    X_train_pca, X_test_pca = pca_features(X_train, X_test, scree_plot=True, save=True)
