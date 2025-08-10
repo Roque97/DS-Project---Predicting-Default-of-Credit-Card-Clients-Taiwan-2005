@@ -143,6 +143,58 @@ def preprocess_data(
 
     return result
 
+
+def set_types_encoded(data_encoded: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensure that after loading the encoded dataset from CSV, the column types are set correctly.
+    - Numerical columns are set to float.
+    - Binary/engineered columns are set to int.
+    - Target column is set to int.
+    - ID column is set to string.
+    - One-hot encoded categorical columns are set to int.
+
+    Args:
+        data_encoded (pd.DataFrame): The DataFrame loaded from CSV.
+
+    Returns:
+        pd.DataFrame: DataFrame with correct types.
+    """
+    # Numerical features
+    numerical_features = [
+        'LIMIT_BAL', 'AGE', 'BILL_AMT1', 'BILL_AMT2', 'BILL_AMT3',
+        'BILL_AMT4', 'BILL_AMT5', 'BILL_AMT6', 'PAY_AMT1', 'PAY_AMT2',
+        'PAY_AMT3', 'PAY_AMT4', 'PAY_AMT5', 'PAY_AMT6'
+    ]
+    # Engineered binary features
+    pay_cols = ['PAY_0', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6']
+    binary_features = []
+    delay_features = []
+    for col in pay_cols:
+        binary_features += [f'{col}_no_consumption', f'{col}_paid_duly']
+        delay_features += [f'{col}_delay']
+
+    # Target and ID
+    target = 'default payment next month'
+    id_col = 'ID'
+
+    # Set types
+    for col in numerical_features + delay_features:
+        if col in data_encoded.columns:
+            data_encoded[col] = data_encoded[col].astype(float)
+    for col in binary_features:
+        if col in data_encoded.columns:
+            data_encoded[col] = data_encoded[col].astype(bool)
+    if target in data_encoded.columns:
+        data_encoded[target] = data_encoded[target].astype(int)
+    if id_col in data_encoded.columns:
+        data_encoded[id_col] = data_encoded[id_col].astype(str)
+
+    # One-hot encoded categorical columns (all remaining object columns except ID)
+    for col in data_encoded.select_dtypes(include='object').columns:
+        if col != id_col:
+            data_encoded[col] = data_encoded[col].astype(int)
+    return data_encoded
+
 if __name__ == "__main__":
     data = load_data()
     
