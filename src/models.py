@@ -237,24 +237,90 @@ def KNNClassifier(
 
 def DecisionTreeClassifierModel(
     data: DataSplitDict,
+    param_grid: Optional[dict] = None,
     save_path: str = None,
     plotsQ: bool = False
 ) -> Tuple[DecisionTreeClassifier, dict]:
     """
     Train and evaluate a Decision Tree classifier for credit card default prediction.
+    Includes hyperparameter tuning using GridSearchCV.
 
     Parameters:
     - data: Dict with keys 'X_train', 'y_train', 'X_test', 'y_test'
-    - save_path (optional): Directory to save plots
+    - param_grid: Dictionary of hyperparameters to search (default provides common DT parameters)
+    - save_path: Directory to save plots
+    - plotsQ: If True, generate and save plots
 
     Returns:
-    - dt: Trained Decision Tree model
+    - dt: Best trained Decision Tree model from grid search
     - results: Evaluation results dictionary
     """
+    # Default parameter grid if none provided
+    if param_grid is None:
+        param_grid = {
+            'max_depth': [3, 5, 10, None],
+            'min_samples_split': [2, 5, 10],
+            'min_samples_leaf': [1, 5, 10],
+            'criterion': ['gini', 'entropy']
+        }
+    
+    # Create base model
     dt = DecisionTreeClassifier(random_state=12345)
-    dt.fit(data['X_train'], data['y_train'])
-    results = evaluate_model(dt, data, plotsQ=plotsQ, save_path=save_path)
-    return dt, results
+    
+    # Perform grid search
+    grid = GridSearchCV(dt, param_grid, cv=5, scoring='accuracy')
+    grid.fit(data['X_train'], data['y_train'])
+    
+    # Print best parameters and score
+    print("Best parameters:", grid.best_params_)
+    print("Best cross-validated accuracy:", grid.best_score_)
+    
+    if plotsQ:
+        # Plot feature importance of best model
+        best_dt = grid.best_estimator_
+        importances = best_dt.feature_importances_
+        features = data['X_train'].columns
+        indices = np.argsort(importances)[::-1]
+        
+        # Plot top 15 important features
+        plt.figure(figsize=(10, 6))
+        plt.bar([features[i] for i in indices[:15]], importances[indices[:15]])
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        plt.title('Top Feature Importances (Decision Tree)')
+        if save_path is not None:
+            plt.savefig(os.path.join(save_path, 'feature_importance.png'))
+        plt.show()
+        
+        # Plot max_depth vs accuracy if max_depth was in param_grid
+        if 'max_depth' in param_grid and len(param_grid['max_depth']) > 1:
+            results = grid.cv_results_
+            depths = param_grid['max_depth']
+            
+            # Extract scores for different max_depths (averaging over other parameters)
+            depth_scores = {}
+            for depth in depths:
+                if depth is None:
+                    mask = [p['max_depth'] is None for p in results['params']]
+                else:
+                    mask = [p.get('max_depth') == depth for p in results['params']]
+                depth_scores[str(depth)] = np.mean(results['mean_test_score'][mask])
+            
+            plt.figure(figsize=(8, 5))
+            plt.plot(list(depth_scores.keys()), list(depth_scores.values()), marker='o')
+            plt.xlabel('Max Depth')
+            plt.ylabel('Cross-Validated Accuracy')
+            plt.title('Decision Tree: Accuracy vs Max Depth')
+            plt.grid(True)
+            if save_path is not None:
+                plt.savefig(os.path.join(save_path, 'max_depth_vs_accuracy.png'))
+            plt.show()
+    
+    # Get best model and evaluate
+    best_dt = grid.best_estimator_
+    results = evaluate_model(best_dt, data, plotsQ=plotsQ, save_path=save_path)
+    
+    return best_dt, results
 
 if __name__ == "__main__":
    
@@ -274,7 +340,8 @@ if __name__ == "__main__":
     
     #results_nb = NaiveBayesClassifier(original_data, save_path='plots/models/NaiveBayes/original/', plotsQ=True)
     
-    test_cases_n = list(range(1, 50, 2))  # Default test cases for KNN
-    KNNClassifier(original_data, test_cases_n, save_path='plots/models/KNN/original/')
+    # KNN Classifier
+    #test_cases_n = list(range(1, 50, 2))  # Default test cases for KNN
+    #KNNClassifier(original_data, test_cases_n, save_path='plots/models/KNN/original/')
 
 
