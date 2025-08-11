@@ -25,37 +25,7 @@ X18-X23: Amount of previous payment (NT dollar). X18 = amount paid in September,
 
 Y: client's behavior; Y=0 then not default, Y=1 then default"
 
-Project Structure
-.
-├── data/
-│   ├── processed/           # Preprocessed datasets
-│   │   ├── MRMR/            # Features selected with mRMR
-│   │   └── PCA/             # PCA transformed features
-│   └── raw/                 # Original dataset
-├── notebooks/
-│   ├── eda.ipynb            # Exploratory Data Analysis
-│   └── modeling.ipynb       # Model training and evaluation
-├── plots/
-│   ├── eda/                 # EDA visualizations
-│   └── models/              # Model performance visualizations
-├── reports/
-│   └── tables/              # Performance summary tables
-├── saved_models/            # Serialized trained models
-├── src/
-│   ├── __init__.py
-│   ├── download_dataset.py  # Script to download the dataset
-│   ├── feature_engineering.py # Feature engineering techniques
-│   ├── models.py            # Model implementations
-│   └── preprocessing.py     # Data preprocessing functions
-├── .env                     # Environment variables
-├── .gitignore               # Git ignore file
-├── LICENSE                  # Apache 2.0 license
-├── notes.txt                # Project notes
-├── README.md                # Project documentation
-└── requirements.txt         # Python dependencies
 
-git clone https://github.com/yourusername/DS-Project---Predicting-Default-of-Credit-Card-Clients-Taiwan-2005.git
-cd DS-Project---Predicting-Default-of-Credit-Card-Clients-Taiwan-2005
 ## Installation and Setup
 
 1. Clone the repository:
