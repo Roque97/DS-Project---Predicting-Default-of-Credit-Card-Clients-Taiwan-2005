@@ -11,7 +11,8 @@ from sklearn.naive_bayes import GaussianNB
 from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.ensemble import RandomForestClassifier
 
 
 class DataSplitDict(TypedDict):
@@ -292,6 +293,23 @@ def DecisionTreeClassifierModel(
             plt.savefig(os.path.join(save_path, 'feature_importance.png'))
         plt.show()
         
+        # Plot the decision tree visualization
+        plt.figure(figsize=(20, 10))
+        # Limit max_depth for visualization if tree is too large
+        # max_depth=3 shows the first few levels which is usually most informative
+        visualization_depth = 3 if best_dt.get_depth() > 3 else None
+        plot_tree(best_dt, 
+                  feature_names=data['X_train'].columns, 
+                  class_names=['Not Default', 'Default'],
+                  filled=True,
+                  rounded=True,
+                  fontsize=8,
+                  max_depth=visualization_depth)
+        plt.title('Decision Tree Visualization')
+        if save_path is not None:
+            plt.savefig(os.path.join(save_path, 'decision_tree_plot.png'), dpi=300, bbox_inches='tight')
+        plt.show()
+        
         # Plot max_depth vs accuracy if max_depth was in param_grid
         if 'max_depth' in param_grid and len(param_grid['max_depth']) > 1:
             results = grid.cv_results_
@@ -321,6 +339,91 @@ def DecisionTreeClassifierModel(
     results = evaluate_model(best_dt, data, plotsQ=plotsQ, save_path=save_path)
     
     return best_dt, results
+
+def RandomForestClassifierModel(
+    data: DataSplitDict,
+    param_grid: Optional[dict] = None,
+    save_path: str = None,
+    plotsQ: bool = False
+) -> Tuple[DecisionTreeClassifier, dict]:
+    """
+    Train and evaluate a Random Forest classifier for credit card default prediction.
+    Includes hyperparameter tuning using GridSearchCV.
+
+    Parameters:
+    - data: Dict with keys 'X_train', 'y_train', 'X_test', 'y_test'
+    - param_grid: Dictionary of hyperparameters to search (default provides common RF parameters)
+    - save_path: Directory to save plots
+    - plotsQ: If True, generate and save plots
+
+    Returns:
+    - rf: Best trained Random Forest model from grid search
+    - results: Evaluation results dictionary
+    """
+    
+    # Default parameter grid if none provided
+    if param_grid is None:
+        param_grid = {
+            'n_estimators': [50, 100, 200],
+            'max_depth': [None, 10, 20],
+            'min_samples_split': [2, 5, 10],
+            'min_samples_leaf': [1, 2, 4],
+            'criterion': ['gini', 'entropy']
+        }
+    
+    # Create base model
+    rf = RandomForestClassifier(random_state=12345)
+    
+    # Perform grid search
+    grid = GridSearchCV(rf, param_grid, cv=5, scoring='accuracy')
+    grid.fit(data['X_train'], data['y_train'])
+    
+    # Print best parameters and score
+    print("Best parameters:", grid.best_params_)
+    print("Best cross-validated accuracy:", grid.best_score_)
+    
+    if plotsQ:
+        # Plot feature importance of best model
+        best_rf = grid.best_estimator_
+        importances = best_rf.feature_importances_
+        features = data['X_train'].columns
+        indices = np.argsort(importances)[::-1]
+        
+        # Plot top 15 important features
+        plt.figure(figsize=(10, 6))
+        plt.title("Random Forest: Feature Importance")
+        plt.barh(range(15), importances[indices][:15], align="center")
+        plt.yticks(range(15), features[indices][:15])
+        plt.xlabel("Feature Importance")
+        if save_path is not None:
+            plt.savefig(os.path.join(save_path, 'feature_importance.png'))
+        plt.show()
+        # Plot n_estimators vs accuracy if n_estimators was in param_grid
+        if 'n_estimators' in param_grid and len(param_grid['n_estimators']) > 1:
+            results = grid.cv_results_
+            n_estimators = param_grid['n_estimators']
+            
+            # Extract scores for different n_estimators (averaging over other parameters)
+            estimator_scores = {}
+            for n_est in n_estimators:
+                mask = [p.get('n_estimators') == n_est for p in results['params']]
+                estimator_scores[n_est] = np.mean(results['mean_test_score'][mask])
+            
+            plt.figure(figsize=(8, 5))
+            plt.plot(list(estimator_scores.keys()), list(estimator_scores.values()), marker='o')
+            plt.xlabel('Number of Estimators')
+            plt.ylabel('Cross-Validated Accuracy')
+            plt.title('Random Forest: Accuracy vs Number of Estimators')
+            plt.grid(True)
+            if save_path is not None:
+                plt.savefig(os.path.join(save_path, 'n_estimators_vs_accuracy.png'))
+            plt.show()
+    # Get best model and evaluate
+    best_rf = grid.best_estimator_
+    results = evaluate_model(best_rf, data, plotsQ=plotsQ, save_path=save_path)
+    
+    return best_rf, results
+
 
 if __name__ == "__main__":
    
