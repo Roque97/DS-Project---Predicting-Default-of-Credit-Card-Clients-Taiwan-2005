@@ -156,21 +156,12 @@ def mrmr_features(
     except Exception as e:
         # Fallback to a simpler feature selection method if MRMR fails
         print(f"MRMR selection failed with error: {str(e)}")
-        print("Using correlation-based feature selection instead")
-        
-        # Calculate correlation with target
-        corr_with_target = []
-        for col in X_train_features.columns:
-            corr = np.corrcoef(X_train_features[col], y_train)[0, 1]
-            corr_with_target.append((col, abs(corr)))
-        
-        # Sort by absolute correlation and select top max_features
-        corr_with_target.sort(key=lambda x: x[1], reverse=True)
-        selected_features = [col for col, _ in corr_with_target[:max_features]]
-        
-        # Select these features from the datasets
-        X_train_mrmr = X_train_features[selected_features]
-        X_test_mrmr = X_test_features[selected_features]
+    
+    # Limit selected features to max_features
+    if len(selected_features) > max_features:
+        selected_features = selected_features[:max_features]
+        X_train_mrmr = X_train_mrmr[selected_features]
+        X_test_mrmr = X_test_mrmr[selected_features]
     
     print(f"Selected {len(selected_features)} features")
     print(f"Top 10 features: {selected_features[:10]}")
@@ -236,4 +227,4 @@ if __name__ == "__main__":
     y_train = pd.read_csv("./data/processed/original_y_train.csv").values.ravel()
 
     # X_train_pca, X_test_pca = pca_features(X_train, X_test, scree_plot=True, save=True)
-    X_train_mrmr, X_test_mrmr, selected_features = mrmr_features(X_train, X_test, y_train, plotQ=True, save_path="./data/processed/mRMR")
+    X_train_mrmr, X_test_mrmr, selected_features = mrmr_features(X_train, X_test, y_train, plotQ=True, max_features=20, save_path="./data/processed/mRMR")

@@ -1,0 +1,61 @@
+Here is a description of the datasets produced by your `preprocess_data` function:
+
+---
+
+## Datasets Produced by `preprocess_data`
+
+The function generates several datasets at different stages of preprocessing:
+
+### 1. **original**
+- **Description:**  
+  The raw dataset after basic cleaning and type conversion.
+- **Contents:**  
+  - Numerical features converted to numeric types.
+  - Categorical features mapped to meaningful labels and converted to categorical types.
+  - Rows with missing values dropped.
+  - Original columns retained, except for rows removed due to missing data.
+
+### 2. **transformed**
+- **Description:**  
+  The dataset after feature engineering.
+- **Contents:**  
+  - New binary features for payment history (e.g., `PAY_0_no_consumption`, `PAY_0_paid_duly`, etc.).
+  - Delay features for each payment column.
+  - Original `PAY_X` columns removed.
+  - Target column (`default payment next month`) converted to integer.
+
+### 3. **encoded**
+- **Description:**  
+  The fully processed dataset, ready for modeling.
+- **Contents:**  
+  - One-hot encoded categorical features (except the target).
+  - All engineered features and numerical columns.
+  - Target column retained as integer.
+  - ID column retained.
+
+### 4. **X_train, X_test, y_train, y_test** (if `split_data=True`)
+- **Description:**  
+  Train/test splits for supervised learning.
+- **Contents:**  
+  - `X_train`: Features for training.
+  - `X_test`: Features for testing.
+  - `y_train`: Target values for training.
+  - `y_test`: Target values for testing.
+  - Stratified split to preserve class distribution.
+
+### 5. **Saved CSV Files** (if `save=True`)
+- **Description:**  
+  All above datasets are saved as CSV files in processed.
+- **Files:**  
+  - `{save_prefix}_original.csv`
+  - `{save_prefix}_transformed.csv`
+  - `{save_prefix}_encoded.csv`
+  - `{save_prefix}_X_train.csv`
+  - `{save_prefix}_X_test.csv`
+  - `{save_prefix}_y_train.csv`
+  - `{save_prefix}_y_test.csv`
+
+---
+
+**Summary:**  
+You get cleaned, feature-engineered, and encoded datasets, plus train/test splits for modeling, all optionally saved as CSV files for reproducibility and further analysis.
