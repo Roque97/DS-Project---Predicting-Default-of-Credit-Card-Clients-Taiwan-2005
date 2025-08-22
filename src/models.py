@@ -14,7 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.ensemble import RandomForestClassifier
 
-from preprocessing import set_types_encoded
+from .feature_engineering import set_types_encoded
 
 
 class DataSplitDict:
@@ -45,7 +45,6 @@ class DataSplitDict:
 
         return DataSplitDict(X_train_std, y_train, X_test_std, y_test)
 
-
 def evaluate_model(model, data: DataSplitDict, plotsQ : bool = False, save_path: str = None):
     """
     Evaluate the model using various classification metrics on credit card default prediction.
@@ -59,8 +58,8 @@ def evaluate_model(model, data: DataSplitDict, plotsQ : bool = False, save_path:
     Returns:
     - results: Dictionary with evaluation metrics and their values
     """
-    X_test = data['X_test']
-    y_test = data['y_test']
+    X_test = data.X_test
+    y_test = data.y_test
 
     results = {}
 
@@ -188,8 +187,6 @@ def NaiveBayesClassifier(
     
 
     # Standardize features (call method on data)
-    data.standardize_features()
-
     nb = GaussianNB()
     nb.fit(data.X_train, data.y_train)
 

@@ -7,6 +7,131 @@ from feature_engine.selection import MRMR
 import os
 
 
+def create_new_features(data: pd.DataFrame) -> pd.DataFrame:
+
+    # Copy data for transformation
+    new_data = data.copy()
+
+    # Create new features
+    for col in pay_cols:
+        new_data[f'{col}_no_consumption'] = (new_data[col] == -2).astype(int)
+        new_data[f'{col}_paid_duly'] = (new_data[col] == -1).astype(int)
+        new_data[f'{col}_delay'] = new_data[col].apply(lambda x: 0 if x < 0 else x)
+    new_data[target] = new_data[target].astype(int)
+
+    # Remove original PAY_X columns after feature engineering
+    new_data = new_data.drop(columns=pay_cols)
+
+    # Exclude the target variable from dummyfication
+    categorical_to_dummy = [col for col in new_data.select_dtypes(include='category').columns if col != target]
+
+    # Perform one-hot encoding, keeping the target as category
+    data_encoded = pd.get_dummies(new_data, columns=categorical_to_dummy, drop_first=False)
+
+    # Prepare return dictionary
+    result = {
+        'original': data,
+        'transformed': new_data,
+        'encoded': data_encoded
+    }
+
+    return result
+
+def split_data(data_encoded: pd.DataFrame, target: str, test_size: float = 0.2, random_state: int = 12345) -> dict:
+
+    target = 'default payment next month'
+
+    # Split data if requested
+    # Prepare features and target
+    feature_cols = [col for col in data_encoded.columns if col not in [target, 'ID']]
+    X = data_encoded[feature_cols]
+    y = data_encoded[target]
+    
+    # Split the data
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=random_state, stratify=y
+    )
+    
+    # Add splits to result
+    result.update({
+        'X_train': X_train,
+        'X_test': X_test,
+        'y_train': y_train,
+        'y_test': y_test
+    })
+    
+    print(f"Training set shape: {X_train.shape}")
+    print(f"Test set shape: {X_test.shape}")
+    print(f"Class distribution in training set:\n{y_train.value_counts(normalize=True)}")
+
+    # Save results if requested
+    if save_prefix:
+        import os
+        os.makedirs("data/processed", exist_ok=True)
+        data.to_csv(f"data/processed/{save_prefix}_original.csv", index=False)
+        new_data.to_csv(f"data/processed/{save_prefix}_transformed.csv", index=False)
+        data_encoded.to_csv(f"data/processed/{save_prefix}_encoded.csv", index=False)
+        if split_data:
+            X_train.to_csv(f"data/processed/{save_prefix}_X_train.csv", index=False)
+            X_test.to_csv(f"data/processed/{save_prefix}_X_test.csv", index=False)
+            y_train.to_csv(f"data/processed/{save_prefix}_y_train.csv", index=False)
+            y_test.to_csv(f"data/processed/{save_prefix}_y_test.csv", index=False)
+        print("Processed files saved to data/processed/")
+
+    return result
+
+
+def set_types_encoded(data_encoded: pd.DataFrame) -> pd.DataFrame:
+    """
+    Ensure that after loading the encoded dataset from CSV, the column types are set correctly.
+    - Numerical columns are set to float.
+    - Binary/engineered columns are set to int.
+    - Target column is set to int.
+    - ID column is set to string.
+    - One-hot encoded categorical columns are set to int.
+
+    Args:
+        data_encoded (pd.DataFrame): The DataFrame loaded from CSV.
+
+    Returns:
+        pd.DataFrame: DataFrame with correct types.
+    """
+    # Numerical features
+    numerical_features = [
+        'LIMIT_BAL', 'AGE', 'BILL_AMT1', 'BILL_AMT2', 'BILL_AMT3',
+        'BILL_AMT4', 'BILL_AMT5', 'BILL_AMT6', 'PAY_AMT1', 'PAY_AMT2',
+        'PAY_AMT3', 'PAY_AMT4', 'PAY_AMT5', 'PAY_AMT6'
+    ]
+    # Engineered binary features
+    pay_cols = ['PAY_0', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6']
+    binary_features = []
+    delay_features = []
+    for col in pay_cols:
+        binary_features += [f'{col}_no_consumption', f'{col}_paid_duly']
+        delay_features += [f'{col}_delay']
+
+    # Target and ID
+    target = 'default payment next month'
+    id_col = 'ID'
+
+    # Set types
+    for col in numerical_features + delay_features:
+        if col in data_encoded.columns:
+            data_encoded[col] = data_encoded[col].astype(float)
+    for col in binary_features:
+        if col in data_encoded.columns:
+            data_encoded[col] = data_encoded[col].astype(bool)
+    if target in data_encoded.columns:
+        data_encoded[target] = data_encoded[target].astype(int)
+    if id_col in data_encoded.columns:
+        data_encoded[id_col] = data_encoded[id_col].astype(str)
+
+    # One-hot encoded categorical columns (all remaining object columns except ID)
+    for col in data_encoded.select_dtypes(include='object').columns:
+        if col != id_col:
+            data_encoded[col] = data_encoded[col].astype(int)
+    return data_encoded
+
 def pca_features(
     X_train: pd.DataFrame,
     X_test: pd.DataFrame,
@@ -76,7 +201,6 @@ def pca_features(
             f"./data/processed/PCA/pca_X_test{dataset_suffix}.csv", index=False)
 
     return X_train_pca, X_test_pca,
-
 
 def mrmr_features(
     X_train: pd.DataFrame,
