@@ -14,31 +14,36 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.ensemble import RandomForestClassifier
 
-
-class DataSplitDict(TypedDict):
-    X_train: pd.DataFrame
-    y_train: pd.Series
-    X_test: pd.DataFrame
-    y_test: pd.Series
+from preprocessing import set_types_encoded
 
 
-def standardize_features(data : pd.DataFrame) -> pd.DataFrame:
-    """Standardize numerical features in the DataFrame.
+class DataSplitDict:
+    def __init__(self, X_train: pd.DataFrame, y_train: pd.Series, X_test: pd.DataFrame, y_test: pd.Series):
+        self.X_train = X_train
+        self.y_train = y_train
+        self.X_test = X_test
+        self.y_test = y_test
 
-    Args:
-        data (pd.DataFrame): The DataFrame containing the dataset.
+    def standardize_features(self) -> "DataSplitDict":
+        """
+        Return a new DataSplitDict with standardized numerical features in X_train and X_test.
 
-    Returns:
-        pd.DataFrame: The DataFrame with standardized numerical features.
-    """    
-    # Identify numerical features for standardization
-    numerical_features = data.select_dtypes(include=[np.float64, np.int64]).columns.tolist()
+        Returns:
+            DataSplitDict: A new DataSplitDict with standardized numerical features.
+        """
+        import copy
+        X_train_std = self.X_train.copy()
+        X_test_std = self.X_test.copy()
+        y_train = self.y_train.copy() if hasattr(self.y_train, 'copy') else self.y_train
+        y_test = self.y_test.copy() if hasattr(self.y_test, 'copy') else self.y_test
 
-    for col in data.columns:
-        if np.issubdtype(data[col].dtype, np.number) and col in numerical_features:
-            scaler = StandardScaler()
-            data[[col]] = scaler.fit_transform(data[[col]])
-    return data
+        numerical_features = X_train_std.select_dtypes(include=[np.float64, np.int64]).columns.tolist()
+        scaler = StandardScaler()
+
+        X_train_std[numerical_features] = scaler.fit_transform(X_train_std[numerical_features])
+        X_test_std[numerical_features] = scaler.transform(X_test_std[numerical_features])
+
+        return DataSplitDict(X_train_std, y_train, X_test_std, y_test)
 
 
 def evaluate_model(model, data: DataSplitDict, plotsQ : bool = False, save_path: str = None):
@@ -182,12 +187,11 @@ def NaiveBayesClassifier(
 
     
 
-    # Standardize features
-    X_train = standardize_features(data['X_train'])
-    X_test = standardize_features(data['X_test'])
+    # Standardize features (call method on data)
+    data.standardize_features()
 
     nb = GaussianNB()
-    nb.fit(X_train, data['y_train'])
+    nb.fit(data.X_train, data.y_train)
 
     results = evaluate_model(nb, data, plotsQ=plotsQ, save_path=save_path)
     return nb, results
@@ -435,10 +439,17 @@ if __name__ == "__main__":
         y_test=pd.read_csv('data/processed/original_y_test.csv').values.ravel()
     )
 
+    original_data.X_train = set_types_encoded(original_data.X_train)
+    original_data.X_test = set_types_encoded(original_data.X_test)
+    print(original_data.X_train.head(20))
+
     # Standardize features
-    original_data['X_train'] = standardize_features(original_data['X_train'])
-    original_data['X_test'] = standardize_features(original_data['X_test'])
-    
+    original_data_standardized = original_data.standardize_features()
+
+    print(original_data_standardized.X_train['AGE'].describe())
+
+    print(original_data.X_train.head())
+
     # Naive Bayes Classifier
     
     #results_nb = NaiveBayesClassifier(original_data, save_path='plots/models/NaiveBayes/original/', plotsQ=True)
