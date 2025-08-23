@@ -9,7 +9,7 @@ numerical_features = [
 
 categorical_features = [
         'SEX', 'EDUCATION', 'MARRIAGE',
-        'PAY_0', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6',
+        'PAY_1', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6',
         'default payment next month'
     ]
 
@@ -47,6 +47,9 @@ def preprocess_data(
     """
     new_data = data.copy()
 
+    #Rename PAY_0 to PAY_1 column for consistency
+    new_data.rename(columns={'PAY_0': 'PAY_1'}, inplace=True)
+
     #Changing data types and handling missing values
     new_data[numerical_features] = new_data[numerical_features].apply(pd.to_numeric, errors='coerce')
     for col in categorical_features:
@@ -72,8 +75,10 @@ def preprocess_data(
     new_data = new_data.dropna()
     print(f"Data shape after dropping missing values: {new_data.shape}")
 
-    # List of PAY_X columns to transform and remove
-    pay_cols = ['PAY_0', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6']
+
+    #If save prefix is provided, a csv is saved in the data/raw folder
+    if save_prefix:
+        new_data.to_csv(f"data/raw/{save_prefix}_cleaned.csv", index=False)
 
     return new_data
 
@@ -82,5 +87,5 @@ def preprocess_data(
     
 if __name__ == "__main__":
     data = load_data()
-    preprocessed_data = preprocess_data(data)
+    preprocessed_data = preprocess_data(data, save_prefix="preprocessed")
     print(preprocessed_data.head())

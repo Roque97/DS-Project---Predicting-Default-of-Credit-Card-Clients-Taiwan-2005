@@ -3,24 +3,44 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
 from feature_engine.selection import MRMR
 import os
 
+from preprocessing import load_data, preprocess_data
+
+
+target = 'default payment next month'
+
 
 def create_new_features(data: pd.DataFrame) -> pd.DataFrame:
+    """    Create new features based on payment history in the credit card default dataset.
+    This includes:
+    - Creating binary features for payment status (no consumption, paid duly, delay).
+    - Creating delay features for each payment month.
+    - Removing original PAY_X columns after feature engineering.
+    Args:
+        data (pd.DataFrame): Raw data loaded from the source.
+    Returns:
+        pd.DataFrame: DataFrame with new features added and original PAY_X columns removed."""
+
+    pay_cols = ['PAY_1', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6']
 
     # Copy data for transformation
     new_data = data.copy()
 
     # Create new features
     for col in pay_cols:
-        new_data[f'{col}_no_consumption'] = (new_data[col] == -2).astype(int)
-        new_data[f'{col}_paid_duly'] = (new_data[col] == -1).astype(int)
-        new_data[f'{col}_delay'] = new_data[col].apply(lambda x: 0 if x < 0 else x)
-    new_data[target] = new_data[target].astype(int)
+        new_data[f'{col}_no_consumption'] = (new_data[col] == -2).astype(bool)
+        new_data[f'{col}_paid_duly'] = (new_data[col] == -1).astype(bool)
+        new_data[f'{col}_delay'] = new_data[col].apply(lambda x: 0 if x < 0 else x).astype(int)
+    new_data[target] = new_data[target].astype(bool)
 
     # Remove original PAY_X columns after feature engineering
     new_data = new_data.drop(columns=pay_cols)
+
+    new_data['avg_bill'] = new_data[['BILL_AMT1', 'BILL_AMT2', 'BILL_AMT3', 'BILL_AMT4', 'BILL_AMT5', 'BILL_AMT6']].mean(axis=1)
+    new_data['avg_bill'] = new_data['avg_bill'].astype(float)
 
     # Exclude the target variable from dummyfication
     categorical_to_dummy = [col for col in new_data.select_dtypes(include='category').columns if col != target]
@@ -30,18 +50,30 @@ def create_new_features(data: pd.DataFrame) -> pd.DataFrame:
 
     # Prepare return dictionary
     result = {
-        'original': data,
         'transformed': new_data,
         'encoded': data_encoded
     }
 
     return result
 
-def split_data(data_encoded: pd.DataFrame, target: str, test_size: float = 0.2, random_state: int = 12345) -> dict:
-
-    target = 'default payment next month'
-
-    # Split data if requested
+def split_data(data_encoded: pd.DataFrame, target: str = None, test_size: float = 0.2, random_state: int = 12345, save_prefix: str = None) -> dict:
+    """
+    Split the encoded data into training and test sets.
+    
+    Args:
+        data_encoded (pd.DataFrame): The encoded DataFrame to split
+        target (str, optional): Target column name. Defaults to 'default payment next month'
+        test_size (float): Proportion of test set. Defaults to 0.2
+        random_state (int): Random state for reproducibility. Defaults to 12345
+        save_prefix (str, optional): Prefix for saving files. If None, files won't be saved
+        
+    Returns:
+        dict: Dictionary containing X_train, X_test, y_train, y_test
+    """
+    # Use default target if not provided
+    if target is None:
+        target = 'default payment next month'
+    
     # Prepare features and target
     feature_cols = [col for col in data_encoded.columns if col not in [target, 'ID']]
     X = data_encoded[feature_cols]
@@ -52,13 +84,13 @@ def split_data(data_encoded: pd.DataFrame, target: str, test_size: float = 0.2, 
         X, y, test_size=test_size, random_state=random_state, stratify=y
     )
     
-    # Add splits to result
-    result.update({
+    # Create result dictionary
+    result = {
         'X_train': X_train,
         'X_test': X_test,
         'y_train': y_train,
         'y_test': y_test
-    })
+    }
     
     print(f"Training set shape: {X_train.shape}")
     print(f"Test set shape: {X_test.shape}")
@@ -66,20 +98,14 @@ def split_data(data_encoded: pd.DataFrame, target: str, test_size: float = 0.2, 
 
     # Save results if requested
     if save_prefix:
-        import os
         os.makedirs("data/processed", exist_ok=True)
-        data.to_csv(f"data/processed/{save_prefix}_original.csv", index=False)
-        new_data.to_csv(f"data/processed/{save_prefix}_transformed.csv", index=False)
-        data_encoded.to_csv(f"data/processed/{save_prefix}_encoded.csv", index=False)
-        if split_data:
-            X_train.to_csv(f"data/processed/{save_prefix}_X_train.csv", index=False)
-            X_test.to_csv(f"data/processed/{save_prefix}_X_test.csv", index=False)
-            y_train.to_csv(f"data/processed/{save_prefix}_y_train.csv", index=False)
-            y_test.to_csv(f"data/processed/{save_prefix}_y_test.csv", index=False)
-        print("Processed files saved to data/processed/")
+        X_train.to_csv(f"data/processed/{save_prefix}_X_train.csv", index=False)
+        X_test.to_csv(f"data/processed/{save_prefix}_X_test.csv", index=False)
+        y_train.to_csv(f"data/processed/{save_prefix}_y_train.csv", index=False)
+        y_test.to_csv(f"data/processed/{save_prefix}_y_test.csv", index=False)
+        print(f"Processed files saved to data/processed/ with prefix '{save_prefix}'")
 
     return result
-
 
 def set_types_encoded(data_encoded: pd.DataFrame) -> pd.DataFrame:
     """
@@ -102,22 +128,38 @@ def set_types_encoded(data_encoded: pd.DataFrame) -> pd.DataFrame:
         'BILL_AMT4', 'BILL_AMT5', 'BILL_AMT6', 'PAY_AMT1', 'PAY_AMT2',
         'PAY_AMT3', 'PAY_AMT4', 'PAY_AMT5', 'PAY_AMT6'
     ]
+
+    original_categorical_features = ['SEX', 'EDUCATION', 'MARRIAGE']
+
+
     # Engineered binary features
-    pay_cols = ['PAY_0', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6']
+    pay_cols = ['PAY_1', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6']
+
     binary_features = []
     delay_features = []
     for col in pay_cols:
         binary_features += [f'{col}_no_consumption', f'{col}_paid_duly']
         delay_features += [f'{col}_delay']
 
+
+    #Add binary features for original categorical features by searching columns that start with the original feature name
+    for col in data_encoded.columns:
+        for orig_col in original_categorical_features:
+            if col.startswith(f"{orig_col}_"):
+                binary_features.append(col)
+
     # Target and ID
     target = 'default payment next month'
     id_col = 'ID'
 
     # Set types
-    for col in numerical_features + delay_features:
+    for col in numerical_features:
         if col in data_encoded.columns:
             data_encoded[col] = data_encoded[col].astype(float)
+
+    for col in delay_features:
+        if col in data_encoded.columns:
+            data_encoded[col] = data_encoded[col].astype(int)
     for col in binary_features:
         if col in data_encoded.columns:
             data_encoded[col] = data_encoded[col].astype(bool)
@@ -131,6 +173,52 @@ def set_types_encoded(data_encoded: pd.DataFrame) -> pd.DataFrame:
         if col != id_col:
             data_encoded[col] = data_encoded[col].astype(int)
     return data_encoded
+
+class DataSplitDict:
+    def __init__(self, X_train: pd.DataFrame, y_train: pd.Series, X_test: pd.DataFrame, y_test: pd.Series):
+        self.X_train = X_train
+        self.y_train = y_train
+        self.X_test = X_test
+        self.y_test = y_test
+
+    def standardize_features(self) -> "DataSplitDict":
+        """
+        Return a new DataSplitDict with standardized numerical features in X_train and X_test.
+
+        Returns:
+            DataSplitDict: A new DataSplitDict with standardized numerical features.
+        """
+        import copy
+        X_train_std = self.X_train.copy()
+        X_test_std = self.X_test.copy()
+        y_train = self.y_train.copy() if hasattr(self.y_train, 'copy') else self.y_train
+        y_test = self.y_test.copy() if hasattr(self.y_test, 'copy') else self.y_test
+
+        numerical_features = X_train_std.select_dtypes(include=[np.float64, np.int64]).columns.tolist()
+        scaler = StandardScaler()
+
+        X_train_std[numerical_features] = scaler.fit_transform(X_train_std[numerical_features])
+        X_test_std[numerical_features] = scaler.transform(X_test_std[numerical_features])
+
+        return DataSplitDict(X_train_std, y_train, X_test_std, y_test)
+    
+    def oversample_smote(self) -> "DataSplitDict":
+        """
+        Return a new DataSplitDict with SMOTE oversampling applied to the training data.
+
+        Returns:
+            DataSplitDict: A new DataSplitDict with SMOTE applied to the training data.
+        """
+
+        X_train_os = self.X_train.copy()
+        y_train_os = self.y_train.copy() if hasattr(self.y_train, 'copy') else self.y_train
+        X_test_os = self.X_test.copy()
+        y_test_os = self.y_test.copy() if hasattr(self.y_test, 'copy') else self.y_test
+
+        smote = SMOTE(random_state=42)
+        X_resampled, y_resampled = smote.fit_resample(X_train_os, y_train_os)
+
+        return DataSplitDict(X_resampled, y_resampled, X_test_os, y_test_os)
 
 def pca_features(
     X_train: pd.DataFrame,
@@ -206,13 +294,14 @@ def mrmr_features(
     X_train: pd.DataFrame,
     X_test: pd.DataFrame,
     y_train: pd.Series,
-    max_features: int = 20,  # Set a default value that's not None
+    max_features: int = 20,
     plotQ: bool = False,
     save_path: str = None,
     dataset_suffix: str = ""
 ) -> tuple:
     """
     Select features using mRMR (Minimum Redundancy Maximum Relevance).
+    Always includes 'avg_bill' feature if available and returns exactly max_features features.
     
     Parameters:
     - X_train: Training features DataFrame
@@ -252,17 +341,29 @@ def mrmr_features(
             X_train_features = X_train_features.drop(columns=[col])
             X_test_features = X_test_features.drop(columns=[col])
     
-    # Ensure max_features isn't larger than the number of features
-    max_features = min(max_features, X_train_features.shape[1])
-    print(f"Using max_features={max_features}, total features: {X_train_features.shape[1]}")
+    # Check if avg_bill exists in the dataset
+    has_avg_bill = 'avg_bill' in X_train_features.columns
     
-    # Use alternative feature selection if MRMR fails
+    # If avg_bill exists, we need to ensure it's included in the final selection
+    if has_avg_bill:
+        # We'll select one less feature with mRMR to make room for avg_bill
+        # if avg_bill doesn't get selected automatically
+        mrmr_max_features = max_features - 1
+        print(f"Reserving space for 'avg_bill', setting mRMR to select {mrmr_max_features} features")
+    else:
+        mrmr_max_features = max_features
+    
+    # Ensure mrmr_max_features isn't larger than the number of available features
+    mrmr_max_features = min(mrmr_max_features, X_train_features.shape[1])
+    print(f"Using max_features={mrmr_max_features} for mRMR selection, total features: {X_train_features.shape[1]}")
+    
+    selected_features = []
     try:
         # Try with MRMR
         mrmr_selector = MRMR(
             variables=None,
-            max_features=max_features,
-            scoring='accuracy',  # Be explicit about scoring
+            max_features=mrmr_max_features,
+            scoring='recall',
             random_state=12345
         )
         
@@ -270,51 +371,147 @@ def mrmr_features(
         print("Fitting MRMR selector...")
         mrmr_selector.fit(X_train_features, y_train)
         
-        # Transform both train and test sets
-        X_train_mrmr = mrmr_selector.transform(X_train_features)
-        X_test_mrmr = mrmr_selector.transform(X_test_features)
+        # Get selected features
+        selected_features = X_train_features.columns[mrmr_selector.get_support()].tolist()
         
-        # Get selected feature names
-        selected_features = X_train_mrmr.columns.tolist()
+        # Check if avg_bill was selected
+        if has_avg_bill:
+            if 'avg_bill' not in selected_features:
+                # avg_bill wasn't selected, so we add it
+                selected_features.append('avg_bill')
+                print("Adding 'avg_bill' to selected features")
+            else:
+                # avg_bill was already selected, so we need to select one more feature
+                # to reach exactly max_features
+                if len(selected_features) < max_features:
+                    print("avg_bill was already selected, adding one more feature")
+                    # Get non-selected features
+                    remaining_features = [f for f in X_train_features.columns 
+                                          if f not in selected_features]
+                    if remaining_features:
+                        # Calculate mutual information to find the best additional feature
+                        from sklearn.feature_selection import mutual_info_classif
+                        mi_scores = mutual_info_classif(
+                            X_train_features[remaining_features], 
+                            y_train, 
+                            random_state=12345
+                        )
+                        # Get the feature with highest MI score
+                        best_additional = remaining_features[mi_scores.argmax()]
+                        selected_features.append(best_additional)
+                        print(f"Added '{best_additional}' based on mutual information")
         
+        # If we have too many features (shouldn't happen, but just in case)
+        if len(selected_features) > max_features:
+            # Keep avg_bill and remove the least important features
+            if has_avg_bill and 'avg_bill' in selected_features:
+                # Remove avg_bill temporarily
+                selected_features.remove('avg_bill')
+                # Calculate importance of remaining features
+                from sklearn.feature_selection import mutual_info_classif
+                mi_scores = mutual_info_classif(
+                    X_train_features[selected_features], 
+                    y_train, 
+                    random_state=12345
+                )
+                # Sort features by importance
+                feature_importance = sorted(zip(selected_features, mi_scores), 
+                                            key=lambda x: x[1], reverse=True)
+                # Keep only the most important ones up to max_features-1
+                selected_features = [f[0] for f in feature_importance[:max_features-1]]
+                # Add avg_bill back
+                selected_features.append('avg_bill')
+            else:
+                # No avg_bill, just keep the most important features
+                from sklearn.feature_selection import mutual_info_classif
+                mi_scores = mutual_info_classif(
+                    X_train_features[selected_features], 
+                    y_train, 
+                    random_state=12345
+                )
+                # Sort features by importance
+                feature_importance = sorted(zip(selected_features, mi_scores), 
+                                            key=lambda x: x[1], reverse=True)
+                # Keep only the most important ones up to max_features
+                selected_features = [f[0] for f in feature_importance[:max_features]]
+        
+        # If we still don't have enough features (e.g., if the dataset has fewer features than max_features)
+        while len(selected_features) < max_features and len(selected_features) < len(X_train_features.columns):
+            # Get non-selected features
+            remaining_features = [f for f in X_train_features.columns 
+                                  if f not in selected_features]
+            if not remaining_features:
+                break
+                
+            # Calculate mutual information to find the best additional feature
+            from sklearn.feature_selection import mutual_info_classif
+            mi_scores = mutual_info_classif(
+                X_train_features[remaining_features], 
+                y_train, 
+                random_state=12345
+            )
+            # Get the feature with highest MI score
+            best_additional = remaining_features[mi_scores.argmax()]
+            selected_features.append(best_additional)
+            print(f"Added '{best_additional}' to reach {max_features} features")
+            
     except Exception as e:
-        # Fallback to a simpler feature selection method if MRMR fails
         print(f"MRMR selection failed with error: {str(e)}")
+        # Fallback to mutual information selection
+        print("Falling back to mutual information selection")
+        from sklearn.feature_selection import mutual_info_classif
+        mi_scores = mutual_info_classif(X_train_features, y_train, random_state=12345)
+        feature_importance = sorted(zip(X_train_features.columns, mi_scores), 
+                                    key=lambda x: x[1], reverse=True)
+        
+        # If avg_bill exists, ensure it's included
+        if has_avg_bill:
+            # Get the top features except avg_bill
+            top_features = [f[0] for f in feature_importance if f[0] != 'avg_bill']
+            # Include at most max_features-1 features plus avg_bill
+            selected_features = top_features[:max_features-1] + ['avg_bill']
+        else:
+            # Just get the top features
+            selected_features = [f[0] for f in feature_importance[:max_features]]
     
-    # Limit selected features to max_features
-    if len(selected_features) > max_features:
-        selected_features = selected_features[:max_features]
-        X_train_mrmr = X_train_mrmr[selected_features]
-        X_test_mrmr = X_test_mrmr[selected_features]
+    # Create the transformed datasets with only the selected features
+    X_train_mrmr = X_train_features[selected_features].copy()
+    X_test_mrmr = X_test_features[selected_features].copy()
     
-    print(f"Selected {len(selected_features)} features")
-    print(f"Top 10 features: {selected_features[:10]}")
+    print(f"Final selected features count: {len(selected_features)}")
+    print(f"avg_bill included: {'avg_bill' in selected_features}")
+    print(f"Selected features: {selected_features}")
     
     # Plotting if requested
     if plotQ:
         try:
-            # Try to plot MRMR relevance if available
-            scores = mrmr_selector.relevance_
-            features = mrmr_selector.variables_
+            # Calculate mutual information for visualization
+            from sklearn.feature_selection import mutual_info_classif
+            mi_scores = mutual_info_classif(
+                X_train_features[selected_features], 
+                y_train, 
+                random_state=12345
+            )
+            features = selected_features
             
             plt.figure(figsize=(15, 4))
-            plt.bar(features, scores, color='skyblue')
+            plt.bar(features, mi_scores, color='skyblue')
             plt.xticks(rotation=90)
             plt.title("Feature Relevance Scores")
             plt.xlabel("Features")
-            plt.ylabel("Relevance Score")
+            plt.ylabel("Mutual Information Score")
             plt.tight_layout()
             plt.show()
             
             # Plot top selected features' relevance
-            selected_scores = {feature: scores[list(features).index(feature)] 
-                              for feature in selected_features if feature in features}
+            selected_scores = dict(zip(features, mi_scores))
             pd.Series(selected_scores).sort_values(ascending=False).plot.bar(figsize=(12, 4))
             plt.title("Relevance of Selected Features")
             plt.tight_layout()
             plt.show()
-        except:
-            # Fallback plot if MRMR plots aren't available
+        except Exception as e:
+            print(f"Plotting error: {str(e)}")
+            # Fallback plot
             plt.figure(figsize=(12, 6))
             plt.bar(selected_features, range(len(selected_features), 0, -1), color='skyblue')
             plt.xticks(rotation=90)
@@ -345,10 +542,55 @@ def mrmr_features(
     # Apply mRMR feature selection
     selected_data = mrmr_features(data_encoded, target='default payment next month', max_features=20)
 
-if __name__ == "__main__":
-    X_train = pd.read_csv("./data/processed/original_X_train.csv")
-    X_test = pd.read_csv("./data/processed/original_X_test.csv")
-    y_train = pd.read_csv("./data/processed/original_y_train.csv").values.ravel()
 
-    # X_train_pca, X_test_pca = pca_features(X_train, X_test, scree_plot=True, save=True)
-    X_train_mrmr, X_test_mrmr, selected_features = mrmr_features(X_train, X_test, y_train, plotQ=True, max_features=20, save_path="./data/processed/mRMR")
+#run to create all the datasets
+if __name__ == "__main__":
+    # Load raw data
+    data = load_data()
+    
+    # Preprocess the data first (this handles the PAY_0 -> PAY_1 rename and other preprocessing)
+    preprocessed_data = preprocess_data(data, save_prefix="preprocessed")
+
+    print(preprocessed_data.dtypes)
+    
+    # Now create new features using the preprocessed data
+    df = create_new_features(preprocessed_data)['encoded']
+    df = set_types_encoded(df)
+    
+    
+    #split the data and save the splits
+    splitted_data = split_data(df, save_prefix="original")
+    data_dict = DataSplitDict(
+        X_train=splitted_data['X_train'],
+        y_train=splitted_data['y_train'],
+        X_test=splitted_data['X_test'],
+        y_test=splitted_data['y_test']
+    )
+
+    print(data_dict.X_train.dtypes)
+
+    #Create PCA datasets
+    pca_X_train, pca_X_test = pca_features(
+        X_train=data_dict.X_train,
+        X_test=data_dict.X_test,
+        save=True,
+        scree_plot=True
+    )
+
+    #Create mRMR datasets
+    mrmr_X_train, mrmr_X_test, selected_features = mrmr_features(
+        X_train=data_dict.X_train,
+        X_test=data_dict.X_test,
+        y_train=data_dict.y_train,
+        max_features=15,
+        plotQ=True,
+        save_path="./data/processed/mRMR",
+        dataset_suffix=""
+    )   
+
+    print('Selected features:', selected_features)
+
+    # If you want to create train/test splits, uncomment below:
+    # split_result = split_data(df, save_prefix="engineered")
+
+    # Example of running PCA and mRMR

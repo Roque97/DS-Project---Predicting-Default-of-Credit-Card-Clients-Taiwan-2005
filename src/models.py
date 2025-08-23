@@ -13,37 +13,9 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.ensemble import RandomForestClassifier
+from imblearn.over_sampling import SMOTE
 
-from .feature_engineering import set_types_encoded
-
-
-class DataSplitDict:
-    def __init__(self, X_train: pd.DataFrame, y_train: pd.Series, X_test: pd.DataFrame, y_test: pd.Series):
-        self.X_train = X_train
-        self.y_train = y_train
-        self.X_test = X_test
-        self.y_test = y_test
-
-    def standardize_features(self) -> "DataSplitDict":
-        """
-        Return a new DataSplitDict with standardized numerical features in X_train and X_test.
-
-        Returns:
-            DataSplitDict: A new DataSplitDict with standardized numerical features.
-        """
-        import copy
-        X_train_std = self.X_train.copy()
-        X_test_std = self.X_test.copy()
-        y_train = self.y_train.copy() if hasattr(self.y_train, 'copy') else self.y_train
-        y_test = self.y_test.copy() if hasattr(self.y_test, 'copy') else self.y_test
-
-        numerical_features = X_train_std.select_dtypes(include=[np.float64, np.int64]).columns.tolist()
-        scaler = StandardScaler()
-
-        X_train_std[numerical_features] = scaler.fit_transform(X_train_std[numerical_features])
-        X_test_std[numerical_features] = scaler.transform(X_test_std[numerical_features])
-
-        return DataSplitDict(X_train_std, y_train, X_test_std, y_test)
+from .feature_engineering import set_types_encoded, DataSplitDict
 
 def evaluate_model(model, data: DataSplitDict, plotsQ : bool = False, save_path: str = None):
     """
