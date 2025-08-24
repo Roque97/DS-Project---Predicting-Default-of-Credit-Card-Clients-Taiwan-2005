@@ -13,7 +13,6 @@ from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.ensemble import RandomForestClassifier
-from imblearn.over_sampling import SMOTE
 
 from .feature_engineering import set_types_encoded, DataSplitDict
 
@@ -167,9 +166,10 @@ def NaiveBayesClassifier(
 
 def KNNClassifier(
     data: DataSplitDict,
-    test_cases_n: Optional[List[int]] = None,
     save_path: str = None,
-    plotsQ: bool = True ) -> Tuple[KNeighborsClassifier, dict]:
+    plotsQ: bool = True,
+    param_grid: Optional[dict] = None
+) -> Tuple[KNeighborsClassifier, dict]:
     """
     Apply K-Nearest Neighbors (KNN) for credit card default prediction.
 
@@ -184,15 +184,20 @@ def KNNClassifier(
     - results: Evaluation results dictionary
     """
 
+    X_train = data.X_train
+    X_test = data.X_test
+    y_train = data.y_train
+    y_test = data.y_test
 
-
-    param_grid = {'n_neighbors': test_cases_n if test_cases_n is not None else list(range(1, 21))}
+    if param_grid is None:
+        param_grid = {'n_neighbors': test_cases_n if test_cases_n is not None else list(range(1, 40, 2))}
+        
     knn = KNeighborsClassifier()
-    grid = GridSearchCV(knn, param_grid, cv=5, scoring='accuracy')
-    grid.fit(data['X_train'], data['y_train'])
+    grid = GridSearchCV(knn, param_grid, cv=10, scoring='f1')
+    grid.fit(X_train, y_train)
 
     print("Best n_neighbors:", grid.best_params_['n_neighbors'])
-    print("Best cross-validated accuracy:", grid.best_score_)
+    print("Best cross-validated F1 score:", grid.best_score_)
 
     if plotsQ:
         mean_scores = grid.cv_results_['mean_test_score']
@@ -200,8 +205,8 @@ def KNNClassifier(
         plt.figure(figsize=(8, 5))
         plt.plot(n_neighbors, mean_scores, marker='o')
         plt.xlabel('Number of Neighbors (k)')
-        plt.ylabel('Cross-Validated Accuracy')
-        plt.title('KNN Accuracy vs Number of Neighbors')
+        plt.ylabel('Cross-Validated F1 Score')
+        plt.title('KNN F1 Score vs Number of Neighbors')
         plt.grid(True)
         plt.show()
 
@@ -230,6 +235,12 @@ def DecisionTreeClassifierModel(
     - results: Evaluation results dictionary
     """
     # Default parameter grid if none provided
+
+    X_train = data.X_train
+    X_test = data.X_test
+    y_train = data.y_train
+    y_test = data.y_test
+
     if param_grid is None:
         param_grid = {
             'max_depth': [3, 5, 10, None],
@@ -240,20 +251,25 @@ def DecisionTreeClassifierModel(
     
     # Create base model
     dt = DecisionTreeClassifier(random_state=12345)
+
+    X_train = data.X_train.reset_index(drop=True)
+    X_test = data.X_test.reset_index(drop=True)
+    y_train = pd.Series(data.y_train).reset_index(drop=True)
+    y_test = pd.Series(data.y_test).reset_index(drop=True)
     
     # Perform grid search
-    grid = GridSearchCV(dt, param_grid, cv=5, scoring='accuracy')
-    grid.fit(data['X_train'], data['y_train'])
-    
+    grid = GridSearchCV(dt, param_grid, cv=5, scoring='recall')
+    grid.fit(X_train, y_train)
+
     # Print best parameters and score
     print("Best parameters:", grid.best_params_)
-    print("Best cross-validated accuracy:", grid.best_score_)
+    print("Best cross-validated F1 score:", grid.best_score_)
     
     if plotsQ:
         # Plot feature importance of best model
         best_dt = grid.best_estimator_
         importances = best_dt.feature_importances_
-        features = data['X_train'].columns
+        features = X_train.columns
         indices = np.argsort(importances)[::-1]
         
         # Plot top 15 important features
@@ -272,7 +288,7 @@ def DecisionTreeClassifierModel(
         # max_depth=3 shows the first few levels which is usually most informative
         visualization_depth = 3 if best_dt.get_depth() > 3 else None
         plot_tree(best_dt, 
-                  feature_names=data['X_train'].columns, 
+                  feature_names=X_train.columns, 
                   class_names=['Not Default', 'Default'],
                   filled=True,
                   rounded=True,
@@ -333,12 +349,17 @@ def RandomForestClassifierModel(
     - rf: Best trained Random Forest model from grid search
     - results: Evaluation results dictionary
     """
+
+    X_train = data.X_train
+    X_test = data.X_test
+    y_train = data.y_train
+    y_test = data.y_test
     
     # Default parameter grid if none provided
     if param_grid is None:
         param_grid = {
             'n_estimators': [50, 100, 200],
-            'max_depth': [None, 10, 20],
+            'max_depth': [3, 5, 10],
             'min_samples_split': [2, 5, 10],
             'min_samples_leaf': [1, 2, 4],
             'criterion': ['gini', 'entropy']
@@ -348,18 +369,18 @@ def RandomForestClassifierModel(
     rf = RandomForestClassifier(random_state=12345)
     
     # Perform grid search
-    grid = GridSearchCV(rf, param_grid, cv=5, scoring='accuracy')
-    grid.fit(data['X_train'], data['y_train'])
+    grid = GridSearchCV(rf, param_grid, cv=5, scoring='recall')
+    grid.fit(X_train, y_train)
     
     # Print best parameters and score
     print("Best parameters:", grid.best_params_)
-    print("Best cross-validated accuracy:", grid.best_score_)
+    print("Best cross-validated recall:", grid.best_score_)
     
     if plotsQ:
         # Plot feature importance of best model
         best_rf = grid.best_estimator_
         importances = best_rf.feature_importances_
-        features = data['X_train'].columns
+        features = X_train.columns
         indices = np.argsort(importances)[::-1]
         
         # Plot top 15 important features

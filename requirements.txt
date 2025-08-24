@@ -9,3 +9,5 @@ skfeature-chappers==1.1.0
 feature_engine == 1.8.3
 xgboost == 3.0.4
 imblearn == 0.14.0
+pickle5 == 0.0.11
+streamlit == 1.48.1

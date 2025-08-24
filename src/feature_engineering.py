@@ -7,46 +7,77 @@ from sklearn.model_selection import train_test_split
 from feature_engine.selection import MRMR
 import os
 
-from preprocessing import load_data, preprocess_data
-
+from .preprocessing import load_data, preprocess_data
+from imblearn.over_sampling import SMOTE
 
 target = 'default payment next month'
 
 
-def create_new_features(data: pd.DataFrame) -> pd.DataFrame:
-    """    Create new features based on payment history in the credit card default dataset.
+def create_new_features(data: pd.DataFrame) -> dict:
+    """Create new features based on payment history in the credit card default dataset.
     This includes:
     - Creating binary features for payment status (no consumption, paid duly, delay).
     - Creating delay features for each payment month.
     - Removing original PAY_X columns after feature engineering.
+    
     Args:
-        data (pd.DataFrame): Raw data loaded from the source.
+        data (pd.DataFrame): Raw or preprocessed data.
+        
     Returns:
-        pd.DataFrame: DataFrame with new features added and original PAY_X columns removed."""
-
-    pay_cols = ['PAY_1', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6']
-
-    # Copy data for transformation
+        dict: Dictionary with 'transformed' and 'encoded' DataFrames.
+    """
+    # Handle the PAY_0/PAY_1 naming issue
     new_data = data.copy()
+    
+    # Check if PAY_0 exists but PAY_1 doesn't - rename if needed
+    if 'PAY_0' in new_data.columns and 'PAY_1' not in new_data.columns:
+        print("Renaming PAY_0 to PAY_1 for consistency")
+        new_data = new_data.rename(columns={'PAY_0': 'PAY_1'})
+    
+    # Define payment columns (now we're sure PAY_1 exists if either was present)
+    pay_cols = ['PAY_1', 'PAY_2', 'PAY_3', 'PAY_4', 'PAY_5', 'PAY_6']
+    
+    # Verify that all required columns exist
+    missing_cols = [col for col in pay_cols if col not in new_data.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required payment columns: {missing_cols}. Please check your data.")
 
     # Create new features
     for col in pay_cols:
         new_data[f'{col}_no_consumption'] = (new_data[col] == -2).astype(bool)
         new_data[f'{col}_paid_duly'] = (new_data[col] == -1).astype(bool)
         new_data[f'{col}_delay'] = new_data[col].apply(lambda x: 0 if x < 0 else x).astype(int)
-    new_data[target] = new_data[target].astype(bool)
-
+    
     # Remove original PAY_X columns after feature engineering
     new_data = new_data.drop(columns=pay_cols)
 
-    new_data['avg_bill'] = new_data[['BILL_AMT1', 'BILL_AMT2', 'BILL_AMT3', 'BILL_AMT4', 'BILL_AMT5', 'BILL_AMT6']].mean(axis=1)
-    new_data['avg_bill'] = new_data['avg_bill'].astype(float)
+    # Create avg_bill feature
+    bill_cols = ['BILL_AMT1', 'BILL_AMT2', 'BILL_AMT3', 'BILL_AMT4', 'BILL_AMT5', 'BILL_AMT6']
+    if all(col in new_data.columns for col in bill_cols):
+        new_data['avg_bill'] = new_data[bill_cols].mean(axis=1).astype(float)
+    
+    # Convert target to boolean instead of category to avoid category ordering issues
+    if target in new_data.columns:
+        new_data[target] = new_data[target].astype(int)
 
-    # Exclude the target variable from dummyfication
-    categorical_to_dummy = [col for col in new_data.select_dtypes(include='category').columns if col != target]
+    # Get categorical columns but exclude target which we'll handle separately
+    categorical_to_dummy = []
+    for col in new_data.select_dtypes(include=['category', 'object']).columns:
+        if col != target and col != 'ID':
+            categorical_to_dummy.append(col)
 
-    # Perform one-hot encoding, keeping the target as category
+    # Handle categorical columns safely:
+    # 1. Convert to string first (removes category ordering that might cause issues)
+    # 2. Then perform one-hot encoding
+    for col in categorical_to_dummy:
+        new_data[col] = new_data[col].astype(str)
+    
+    # Perform one-hot encoding
     data_encoded = pd.get_dummies(new_data, columns=categorical_to_dummy, drop_first=False)
+
+    # Ensure target has correct type in encoded data
+    if target in data_encoded.columns:
+        data_encoded[target] = data_encoded[target].astype(int)
 
     # Prepare return dictionary
     result = {
@@ -288,7 +319,7 @@ def pca_features(
         pd.DataFrame(X_test_pca, columns=[f'PC{i+1}' for i in range(X_test_pca.shape[1])]).to_csv(
             f"./data/processed/PCA/pca_X_test{dataset_suffix}.csv", index=False)
 
-    return X_train_pca, X_test_pca,
+    return X_train_pca, X_test_pca, pca
 
 def mrmr_features(
     X_train: pd.DataFrame,
@@ -570,23 +601,36 @@ if __name__ == "__main__":
     print(data_dict.X_train.dtypes)
 
     #Create PCA datasets
-    pca_X_train, pca_X_test = pca_features(
-        X_train=data_dict.X_train,
-        X_test=data_dict.X_test,
-        save=True,
-        scree_plot=True
-    )
+    # pca_X_train, pca_X_test = pca_features(
+    #     X_train=data_dict.X_train,
+    #     X_test=data_dict.X_test,
+    #     save=True,
+    #     scree_plot=True
+    # )
 
     #Create mRMR datasets
+    # mrmr_X_train, mrmr_X_test, selected_features = mrmr_features(
+    #     X_train=data_dict.X_train,
+    #     X_test=data_dict.X_test,
+    #     y_train=data_dict.y_train,
+    #     max_features=15,
+    #     plotQ=True,
+    #     save_path="./data/processed/mRMR",
+    #     dataset_suffix=""
+    # )   
+
     mrmr_X_train, mrmr_X_test, selected_features = mrmr_features(
         X_train=data_dict.X_train,
         X_test=data_dict.X_test,
         y_train=data_dict.y_train,
         max_features=15,
-        plotQ=True,
-        save_path="./data/processed/mRMR",
-        dataset_suffix=""
+        plotQ=True
     )   
+
+
+
+
+
 
     print('Selected features:', selected_features)
 
