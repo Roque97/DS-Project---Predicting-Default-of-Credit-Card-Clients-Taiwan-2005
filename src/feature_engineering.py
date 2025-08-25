@@ -318,6 +318,7 @@ def pca_features(
             f"./data/processed/PCA/pca_X_train{dataset_suffix}.csv", index=False)
         pd.DataFrame(X_test_pca, columns=[f'PC{i+1}' for i in range(X_test_pca.shape[1])]).to_csv(
             f"./data/processed/PCA/pca_X_test{dataset_suffix}.csv", index=False)
+        
 
     return X_train_pca, X_test_pca, pca
 

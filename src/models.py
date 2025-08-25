@@ -14,6 +14,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.ensemble import RandomForestClassifier
 
+import xgboost as xgb
+
 from .feature_engineering import set_types_encoded, DataSplitDict
 
 def evaluate_model(model, data: DataSplitDict, plotsQ : bool = False, save_path: str = None):
@@ -278,7 +280,9 @@ def DecisionTreeClassifierModel(
         plt.xticks(rotation=45, ha='right')
         plt.tight_layout()
         plt.title('Top Feature Importances (Decision Tree)')
+        #create dir
         if save_path is not None:
+            os.makedirs()
             plt.savefig(os.path.join(save_path, 'feature_importance.png'))
         plt.show()
         
@@ -417,6 +421,113 @@ def RandomForestClassifierModel(
     results = evaluate_model(best_rf, data, plotsQ=plotsQ, save_path=save_path)
     
     return best_rf, results
+
+
+def XGBoostClassifierModel(
+    data: DataSplitDict,
+    param_grid: Optional[dict] = None,
+    save_path: str = None,
+    plotsQ: bool = False
+) -> Tuple[xgb.XGBClassifier, dict]:
+    """
+    Train and evaluate an XGBoost classifier for credit card default prediction.
+    Includes hyperparameter tuning using GridSearchCV.
+
+    Parameters:
+    - data: DataSplitDict with keys 'X_train', 'y_train', 'X_test', 'y_test'
+    - param_grid: Dictionary of hyperparameters to search (default provides common XGBoost parameters)
+    - save_path: Directory to save plots
+    - plotsQ: If True, generate and save plots
+
+    Returns:
+    - best_model: Best trained XGBoost model from grid search
+    - results: Evaluation results dictionary
+    """
+    # Use default parameters if none provided
+    if param_grid is None:
+        param_grid = {
+            'max_depth': [3, 6, 9],
+            'learning_rate': [0.01, 0.05],
+            'n_estimators': [50, 100, 200],
+            'subsample': [0.5, 0.8, 1.0],
+            'colsample_bytree': [0.8, 1.0],
+            'gamma': [0, 1, 2],
+        }
+    
+    print("\n" + "="*50)
+    print("XGBoost Classifier")
+    print("="*50)
+    
+    # Create the base model
+    xgb_model = xgb.XGBClassifier(
+        use_label_encoder=False,
+        random_state=12345
+    )
+    
+    # Setup grid search
+    grid = GridSearchCV(
+        estimator=xgb_model,
+        param_grid=param_grid,
+        scoring='recall',
+        cv=5,
+        n_jobs=-1,
+        verbose=1
+    )
+    
+    # Fit the model
+    print("Fitting XGBoost model...")
+    grid.fit(data.X_train, data.y_train)
+    
+    # Get best model
+    best_model = grid.best_estimator_
+    print(f"Best parameters: {grid.best_params_}")
+    print(f"Best cross-validated recall: {grid.best_score_}")
+    
+    # Get evaluation results - this includes confusion matrix plotting when plotsQ=True
+    results = evaluate_model(best_model, data, plotsQ=plotsQ, save_path=save_path)
+    
+    if plotsQ:
+        # Create directory for plots if it doesn't exist
+        if save_path is not None:
+            os.makedirs(save_path, exist_ok=True)
+            
+        # Plot feature importance of best model
+        importances = best_model.feature_importances_
+        features = data.X_train.columns
+        indices = np.argsort(importances)[::-1]
+        
+        # Plot top 15 important features
+        plt.figure(figsize=(10, 6))
+        plt.title("XGBoost: Feature Importance")
+        plt.barh(range(15), importances[indices][:15], align="center")
+        plt.yticks(range(15), features[indices][:15])
+        plt.xlabel("Feature Importance")
+        if save_path is not None:
+            plt.savefig(os.path.join(save_path, 'feature_importance.png'))
+        plt.show()
+        
+        # Plot n_estimators vs recall if n_estimators was in param_grid
+        if 'n_estimators' in param_grid and len(param_grid['n_estimators']) > 1:
+            results_cv = grid.cv_results_
+            n_estimators = param_grid['n_estimators']
+            
+            # Extract scores for different n_estimators (averaging over other parameters)
+            estimator_scores = {}
+            for n_est in n_estimators:
+                mask = [p.get('n_estimators') == n_est for p in results_cv['params']]
+                estimator_scores[n_est] = np.mean(results_cv['mean_test_score'][mask])
+            
+            plt.figure(figsize=(8, 5))
+            plt.plot(list(estimator_scores.keys()), list(estimator_scores.values()), marker='o')
+            plt.xlabel('Number of Estimators')
+            plt.ylabel('Cross-Validated Recall')
+            plt.title('XGBoost: Recall vs Number of Estimators')
+            plt.grid(True)
+            if save_path is not None:
+                plt.savefig(os.path.join(save_path, 'n_estimators_vs_recall.png'))
+            plt.show()
+    
+    return best_model, results
 
 
 if __name__ == "__main__":
